@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "BlasterZone",
+    "slug": "blaster-zone",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0f"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nrxd.blasterzone",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "BlasterZone needs mic access for Discord voice.",
+        "NSCameraUsageDescription": "BlasterZone needs camera for Discord video.",
+        "NSPhotoLibraryUsageDescription": "BlasterZone needs photos for profile pictures."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0a0f"
+      },
+      "package": "com.nrxd.blasterzone",
+      "permissions": ["RECORD_AUDIO", "CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
