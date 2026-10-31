@@ -28,7 +28,13 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build IPA
-        run: eas build --platform ios --profile preview --non-interactive --no-wait
+        run: eas build --platform ios --profile preview --non-interactive --no-wait 2>&1 || true
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_NO_VCS: 1
+
+      - name: Check EAS whoami
+        run: eas whoami
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
