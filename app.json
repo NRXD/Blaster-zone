@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "BlasterZone",
-    "slug": "blaster-zone",
+    "slug": "67",
+    "owner": "blaster-1s-team",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
