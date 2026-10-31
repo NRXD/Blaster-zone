@@ -28,7 +28,9 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build IPA
-        run: eas build --platform ios --profile preview --non-interactive
+        run: eas build --platform ios --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Done
         run: echo "Build submitted! Check https://expo.dev for your IPA download link."
