@@ -6,33 +6,32 @@ import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
-import TokenLoginScreen from './src/screens/TokenLoginScreen';
+import LoginScreen from './src/screens/LoginScreen';
 import DiscordScreen from './src/screens/DiscordScreen';
+import AccountsScreen from './src/screens/AccountsScreen';
 
 const Stack = createStackNavigator();
 
 export default function App() {
-  const [initialRoute, setInitialRoute] = useState(null);
-  const [initialToken, setInitialToken] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [initialRoute, setInitialRoute] = useState('Login');
+  const [initialParams, setInitialParams] = useState({});
 
   useEffect(() => {
-    // Check for saved token on launch
     (async () => {
       try {
-        const saved = await SecureStore.getItemAsync('discord_token');
-        if (saved) {
-          setInitialToken(saved);
+        const active = await SecureStore.getItemAsync('active_account');
+        if (active) {
+          const acc = JSON.parse(active);
           setInitialRoute('Discord');
-        } else {
-          setInitialRoute('TokenLogin');
+          setInitialParams({ account: acc });
         }
-      } catch(e) {
-        setInitialRoute('TokenLogin');
-      }
+      } catch (e) {}
+      setReady(true);
     })();
   }, []);
 
-  if (!initialRoute) {
+  if (!ready) {
     return (
       <View style={s.loading}>
         <ActivityIndicator size="large" color="#7c3aed" />
@@ -61,12 +60,13 @@ export default function App() {
           initialRouteName={initialRoute}
           screenOptions={{ headerShown: false, animationEnabled: true }}
         >
-          <Stack.Screen name="TokenLogin" component={TokenLoginScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen
             name="Discord"
             component={DiscordScreen}
-            initialParams={{ token: initialToken }}
+            initialParams={initialParams}
           />
+          <Stack.Screen name="Accounts" component={AccountsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

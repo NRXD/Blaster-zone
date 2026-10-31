@@ -3,7 +3,7 @@
     "name": "BlasterZone",
     "slug": "67",
     "owner": "blaster-1s-team",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.nrxd.blasterzone",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "BlasterZone needs mic access for Discord voice.",
+        "NSMicrophoneUsageDescription": "BlasterZone needs mic for Discord voice.",
         "NSCameraUsageDescription": "BlasterZone needs camera for Discord video.",
         "NSPhotoLibraryUsageDescription": "BlasterZone needs photos for profile pictures.",
         "ITSAppUsesNonExemptEncryption": false
@@ -31,11 +31,9 @@
       "package": "com.nrxd.blasterzone",
       "permissions": ["RECORD_AUDIO", "CAMERA", "READ_EXTERNAL_STORAGE"]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-av"
     ],
     "extra": {
       "eas": {

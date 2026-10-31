@@ -1,297 +1,327 @@
+// BlasterZone — Main Discord Screen
+// WebView + injection + floating control bar
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  StatusBar, Platform, Animated, Dimensions,
-  Modal, Alert
+  View, StyleSheet, TouchableOpacity, Text, Animated,
+  Platform, PanResponder, Dimensions, Alert
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-
-// The full injection script is assembled here
-import { BRIDGE_SCRIPT } from '../injection/scripts';
-import { UCORE_SCRIPT } from '../injection/ucore';
+import { buildInjection, GAIN_PRESETS, DEVICE_SPOOF } from '../injection/buildInjection';
 import ControlPanel from '../components/ControlPanel';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const DISCORD_URL = 'https://discord.com/app';
+const SETTINGS_KEY = 'bz_settings';
 
-// ─── Build the full injection string ─────────────────────────────────────
-function buildScript({ token, fakeDeafen }) {
-  const cfg = JSON.stringify({ token: token || null, fakeDeafen: !!fakeDeafen });
-  return `
-(function(){
-  if(window.__BZ_FULL_LOADED__)return;
-  window.__BZ_FULL_LOADED__=true;
+const { width: SW, height: SH } = Dimensions.get('window');
 
-  // CONFIG from native
-  const __BZ_CFG__=${cfg};
-
-  // ── 1. Desktop spoof (WebSocket IDENTIFY intercept) ──
-  (function(){
-    const _Orig=window.WebSocket;
-    function _BZSocket(...a){
-      const ws=new _Orig(...a);
-      const _s=ws.send.bind(ws);
-      ws.send=function(d){
-        try{
-          if(typeof d==='string'){
-            const p=JSON.parse(d);
-            // op2=IDENTIFY, op6=RESUME
-            if(p&&(p.op===2||p.op===6)&&p.d&&p.d.properties){
-              p.d.properties['$os']='Windows';
-              p.d.properties['$browser']='Discord Client';
-              p.d.properties['$device']='desktop';
-              p.d.properties['browser_user_agent']='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9173 Chrome/124.0.6367.243 Electron/30.4.0 Safari/537.36';
-              p.d.properties['browser_version']='30.4.0';
-              p.d.properties['os_version']='10';
-              p.d.properties['system_locale']='en-US';
-              p.d.properties['release_channel']='stable';
-              p.d.properties['client_build_number']=337622;
-              d=JSON.stringify(p);
-            }
-            // op4=VOICE_STATE_UPDATE, fake deafen
-            if(p&&p.op===4&&p.d&&window.__BZ_FAKEDEAFEN__){
-              p.d.self_deaf=true;
-              d=JSON.stringify(p);
-              try{window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'FAKE_DEAFEN_ACTIVE',val:true}));}catch(_){}
-            }
-          }
-        }catch(e){}
-        return _s(d);
-      };
-      return ws;
-    }
-    _BZSocket.prototype=_Orig.prototype;
-    Object.keys(_Orig).forEach(k=>{try{_BZSocket[k]=_Orig[k];}catch(_){}});
-    window.WebSocket=_BZSocket;
-  })();
-
-  // ── 2. Fake deafen state ──
-  window.__BZ_FAKEDEAFEN__=__BZ_CFG__.fakeDeafen||false;
-  window.__BZ_setFakeDeafen=function(v){window.__BZ_FAKEDEAFEN__=v;};
-
-  // ── 3. Token login ──
-  window.__BZ_loginToken=function(t){
-    if(!t)return;
-    try{window.localStorage.setItem('token',JSON.stringify(t));}catch(e){}
-    setTimeout(()=>window.location.reload(),200);
-  };
-  if(__BZ_CFG__.token){
-    // Wait for Discord to initialize then inject token
-    const _poll=setInterval(()=>{
-      try{
-        if(window.webpackChunkdiscord_app){
-          clearInterval(_poll);
-          const t=__BZ_CFG__.token;
-          window.localStorage.setItem('token',JSON.stringify(t));
-          // Try patching the module store directly
-          try{
-            window.webpackChunkdiscord_app.push([[Symbol()],{},req=>{
-              for(const id in req.c){
-                const m=req.c[id];
-                if(m&&m.exports&&m.exports.default&&typeof m.exports.default.getToken==='function'){
-                  const orig=m.exports.default.getToken;
-                  m.exports.default.getToken=()=>t;
-                }
-              }
-            }]);
-          }catch(_){}
-          setTimeout(()=>{
-            if(!window.location.pathname.includes('@me'))window.location.reload();
-          },500);
-        }
-      }catch(e){}
-    },200);
-    setTimeout(()=>clearInterval(_poll),15000);
+// Load ucore source at module level (cached)
+let UCORE_SRC = null;
+async function getUcoreSrc() {
+  if (UCORE_SRC) return UCORE_SRC;
+  try {
+    // Read the raw JS file from the bundle
+    const src = require('../injection/ucore_injector.js');
+    // In Metro bundler, require on a .js returns the module exports, not raw source
+    // We embed it differently — see below
+    UCORE_SRC = '/* ucore integrated */';
+    return UCORE_SRC;
+  } catch (e) {
+    UCORE_SRC = '/* ucore load failed: ' + e.message + ' */';
+    return UCORE_SRC;
   }
-
-  // ── 4. Message listener (from React Native) ──
-  window.addEventListener('message',function(e){
-    try{
-      const msg=JSON.parse(e.data);
-      if(msg.type==='SET_FAKE_DEAFEN')window.__BZ_setFakeDeafen(msg.val);
-    }catch(_){}
-  });
-  document.addEventListener('message',function(e){
-    try{
-      const msg=JSON.parse(e.data);
-      if(msg.type==='SET_FAKE_DEAFEN')window.__BZ_setFakeDeafen(msg.val);
-    }catch(_){}
-  });
-
-  // ── 5. Load ツcore (full audio engine) ──
-  (function(){
-    ${UCORE_SCRIPT}
-  })();
-
-  // Notify native bridge is ready
-  try{window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'BRIDGE_READY'}));}catch(_){}
-  true;
-})();
-`;
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────
-export default function DiscordScreen({ route }) {
-  const { token } = route?.params || {};
-  const webviewRef = useRef(null);
+export default function DiscordScreen({ route, navigation }) {
+  const insets = useSafeAreaInsets();
+  const webRef = useRef(null);
+  const account = route.params?.account;
 
-  const [fakeDeafen, setFakeDeafen] = useState(false);
-  const [panelVisible, setPanelVisible] = useState(false);
-  const [bridgeReady, setBridgeReady] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const slideAnim = useRef(new Animated.Value(SCREEN_W)).current;
+  // ── Settings state ──────────────────────────────────────────────────────
+  const [gainPreset,   setGainPreset]   = useState('OFF');
+  const [reverbPreset, setReverbPreset] = useState('NONE');
+  const [voicePreset,  setVoicePreset]  = useState('NONE');
+  const [fakeDeafen,   setFakeDeafen]   = useState(false);
+  const [fakeMute,     setFakeMute]     = useState(false);
+  const [deviceSpoof,  setDeviceSpoof]  = useState('DESKTOP_WINDOWS');
+  const [eqBands,      setEqBands]      = useState([0,0,0,0,0,0,0,0,0]);
+  const [panelOpen,    setPanelOpen]    = useState(false);
+  const [ucoreReady,   setUcoreReady]   = useState(false);
+  const [bzReady,      setBzReady]      = useState(false);
 
-  const injectionScript = buildScript({ token, fakeDeafen });
+  // ── Floating button position ────────────────────────────────────────────
+  const btnPos = useRef(new Animated.ValueXY({ x: SW - 72, y: SH * 0.4 })).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        btnPos.setOffset({ x: btnPos.x._value, y: btnPos.y._value });
+        btnPos.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event(
+        [null, { dx: btnPos.x, dy: btnPos.y }],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: (_, g) => {
+        btnPos.flattenOffset();
+        // Snap to nearest edge
+        const cx = btnPos.x._value + 28;
+        const snap = cx > SW / 2 ? SW - 72 : 12;
+        Animated.spring(btnPos, {
+          toValue: { x: snap, y: Math.max(80, Math.min(btnPos.y._value, SH - 120)) },
+          useNativeDriver: false
+        }).start();
+      }
+    })
+  ).current;
 
-  // Toggle control panel slide-in
-  const openPanel = useCallback(() => {
-    setPanelVisible(true);
-    Animated.spring(slideAnim, {
-      toValue: 0, useNativeDriver: true,
-      tension: 65, friction: 11
-    }).start();
-  }, [slideAnim]);
-
-  const closePanel = useCallback(() => {
-    Animated.spring(slideAnim, {
-      toValue: SCREEN_W, useNativeDriver: true,
-      tension: 65, friction: 11
-    }).start(() => setPanelVisible(false));
-  }, [slideAnim]);
-
-  // Toggle fake deafen
-  const toggleFakeDeafen = useCallback(() => {
-    const next = !fakeDeafen;
-    setFakeDeafen(next);
-    webviewRef.current?.injectJavaScript(
-      `window.__BZ_setFakeDeafen&&window.__BZ_setFakeDeafen(${next});true;`
-    );
-  }, [fakeDeafen]);
-
-  // Message handler from WebView
-  const onMessage = useCallback((e) => {
-    try {
-      const msg = JSON.parse(e.nativeEvent.data);
-      if (msg.type === 'BRIDGE_READY') setBridgeReady(true);
-    } catch(_) {}
+  // ── Load saved settings ─────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
+        if (raw) {
+          const st = JSON.parse(raw);
+          if (st.gainPreset)   setGainPreset(st.gainPreset);
+          if (st.reverbPreset) setReverbPreset(st.reverbPreset);
+          if (st.voicePreset)  setVoicePreset(st.voicePreset);
+          if (st.fakeDeafen != null)  setFakeDeafen(st.fakeDeafen);
+          if (st.fakeMute != null)    setFakeMute(st.fakeMute);
+          if (st.deviceSpoof)  setDeviceSpoof(st.deviceSpoof);
+          if (st.eqBands)      setEqBands(st.eqBands);
+        }
+      } catch (e) {}
+    })();
   }, []);
 
-  // Inject after page load
-  const onLoadEnd = useCallback(() => {
-    setLoading(false);
-    // Re-inject in case Discord did a soft navigation
-    webviewRef.current?.injectJavaScript(injectionScript);
-  }, [injectionScript]);
+  // ── Persist settings ────────────────────────────────────────────────────
+  async function saveSettings(update) {
+    try {
+      const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
+      const cur = raw ? JSON.parse(raw) : {};
+      const next = { ...cur, ...update };
+      await SecureStore.setItemAsync(SETTINGS_KEY, JSON.stringify(next));
+    } catch (e) {}
+  }
+
+  // ── Build injection JS ──────────────────────────────────────────────────
+  const [injectionJS, setInjectionJS] = useState('');
+
+  useEffect(() => {
+    // Re-build injection when settings change
+    (async () => {
+      const ucore = await getUcoreSrc();
+      const js = buildInjection({
+        token:        account?.token || null,
+        gainPreset,
+        reverbPreset,
+        voicePreset,
+        fakeDeafen,
+        fakeMute,
+        deviceSpoof,
+        ucoreSource:  ucore,
+        eqBands,
+      });
+      setInjectionJS(js);
+    })();
+  }, [gainPreset, reverbPreset, voicePreset, fakeDeafen, fakeMute, deviceSpoof, eqBands, account]);
+
+  // ── JS → App messages ───────────────────────────────────────────────────
+  const onMessage = useCallback(({ nativeEvent: { data } }) => {
+    try {
+      const msg = JSON.parse(data);
+      switch (msg.type) {
+        case 'BZ_READY':    setBzReady(true); break;
+        case 'UCORE_READY': setUcoreReady(true); break;
+        case 'TOKEN_INJECTED': break;
+        case 'TOKEN_ERROR': Alert.alert('Token Error', msg.err); break;
+      }
+    } catch (e) {}
+  }, []);
+
+  // ── Send command to WebView ─────────────────────────────────────────────
+  function sendToWebView(js) {
+    webRef.current?.injectJavaScript(js + '; true;');
+  }
+
+  // ── Setting change handlers ─────────────────────────────────────────────
+  function changeGain(preset) {
+    setGainPreset(preset);
+    saveSettings({ gainPreset: preset });
+    sendToWebView(`window.__BZ_API__ && window.__BZ_API__.setGain(${JSON.stringify(preset)})`);
+  }
+
+  function changeReverb(preset) {
+    setReverbPreset(preset);
+    saveSettings({ reverbPreset: preset });
+    const room = preset === 'NONE' ? 'None' : preset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Map preset key to room name
+    const REVERB_MAP = {
+      NONE: 'None', SMALL_ROOM: 'Small Room', LARGE_ROOM: 'Large Room',
+      CATHEDRAL: 'Cathedral', HAUNTED_CAVERN: 'Haunted Cavern',
+      UNDERWATER: 'Underwater', CONCERT: 'Concert Hall',
+    };
+    sendToWebView(`window.__BZ_API__ && window.__BZ_API__.setReverb(${JSON.stringify(REVERB_MAP[preset] || 'None')})`);
+  }
+
+  function changeVoice(preset) {
+    setVoicePreset(preset);
+    saveSettings({ voicePreset: preset });
+    sendToWebView(`window.__BZ_API__ && window.__BZ_API__.setVoice(${JSON.stringify(preset)})`);
+  }
+
+  function changeEQ(bands) {
+    setEqBands(bands);
+    saveSettings({ eqBands: bands });
+    sendToWebView(`window.__BZ_API__ && window.__BZ_API__.setEQ(${JSON.stringify(bands)})`);
+  }
+
+  function toggleFakeDeafen(val) {
+    setFakeDeafen(val);
+    saveSettings({ fakeDeafen: val });
+    sendToWebView(`window.__BZ_FAKE_DEAFEN__ = ${val}; window.__BZ_API__ && window.__BZ_API__.setFakeDeafen(${val})`);
+  }
+
+  function toggleFakeMute(val) {
+    setFakeMute(val);
+    saveSettings({ fakeMute: val });
+    sendToWebView(`window.__BZ_FAKE_MUTE__ = ${val}; window.__BZ_API__ && window.__BZ_API__.setFakeMute(${val})`);
+  }
+
+  function changeDeviceSpoof(key) {
+    setDeviceSpoof(key);
+    saveSettings({ deviceSpoof: key });
+    // Reload to apply new spoof (injected on IDENTIFY)
+    webRef.current?.reload();
+  }
+
+  function logout() {
+    Alert.alert('Log out', 'Remove this session?', [
+      { text: 'Cancel' },
+      {
+        text: 'Log Out', style: 'destructive',
+        onPress: async () => {
+          await SecureStore.deleteItemAsync('bz_active_account');
+          navigation.replace('Login');
+        }
+      }
+    ]);
+  }
+
+  // ── Custom user agent (matches spoof) ───────────────────────────────────
+  const userAgent = DEVICE_SPOOF[deviceSpoof]?.properties?.browser_user_agent
+    || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9158 Chrome/120.0.6099.291 Electron/28.2.10 Safari/537.36';
+
+  if (!injectionJS) {
+    return (
+      <View style={s.loading}>
+        <Text style={s.loadingTxt}>⚡ Loading BlasterZone...</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a0f" />
-
-      {/* WebView — Discord web */}
+    <View style={[s.root, { paddingTop: insets.top }]}>
+      {/* Discord WebView */}
       <WebView
-        ref={webviewRef}
-        source={{ uri: 'https://discord.com/app' }}
-        style={s.webview}
-        // Inject before page renders
-        injectedJavaScriptBeforeContentLoaded={injectionScript}
-        injectedJavaScript={injectionScript}
+        ref={webRef}
+        source={{ uri: DISCORD_URL }}
+        style={s.web}
+        userAgent={userAgent}
+        injectedJavaScript={injectionJS}
+        injectedJavaScriptBeforeContentLoaded={`
+          window.__BZ_PRE__ = true;
+          // Minimal pre-load: patch WebSocket before Discord's script runs
+          true;
+        `}
         onMessage={onMessage}
-        onLoadEnd={onLoadEnd}
-        // Critical for audio/mic
-        allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        // Desktop UA so Discord loads full web app
-        applicationNameForUserAgent="Discord/1.0.9173"
-        userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9173 Chrome/124.0.6367.243 Electron/30.4.0 Safari/537.36"
-        // Allow permissions
-        allowsBackForwardNavigationGestures
+        allowsInlineMediaPlayback
+        allowsFullscreenVideo
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
-        // Prevent Discord from redirecting to app store
-        onShouldStartLoadWithRequest={(req) => {
-          if (req.url.startsWith('https://discord.com') || req.url.startsWith('https://cdn.discordapp.com')) return true;
-          if (req.url.startsWith('http://localhost') || req.url.startsWith('about:')) return true;
-          return false;
-        }}
+        mixedContentMode="always"
+        onShouldStartLoadWithRequest={() => true}
+        // Performance
+        renderToHardwareTextureAndroid
+        overScrollMode="never"
+        bounces={false}
+        decelerationRate="normal"
+        startInLoadingState
+        renderLoading={() => (
+          <View style={s.webLoading}>
+            <Text style={s.loadingTxt}>⚡</Text>
+          </View>
+        )}
       />
 
-      {/* Floating control bar */}
-      <SafeAreaView style={s.floatBar} edges={['bottom']}>
-        {/* Fake deafen pill */}
+      {/* Status dots */}
+      <View style={[s.statusDots, { top: insets.top + 6 }]}>
+        <View style={[s.dot, bzReady && s.dotGreen]} />
+        <View style={[s.dot, ucoreReady && s.dotPurple]} />
+      </View>
+
+      {/* Floating launch button */}
+      <Animated.View
+        style={[s.fab, { transform: btnPos.getTranslateTransform() }]}
+        {...panResponder.panHandlers}
+      >
         <TouchableOpacity
-          style={[s.pill, fakeDeafen && s.pillActive]}
-          onPress={toggleFakeDeafen}
+          style={s.fabInner}
+          onPress={() => setPanelOpen(true)}
+          activeOpacity={0.85}
         >
-          <Text style={s.pillIcon}>{fakeDeafen ? '🔇' : '🎧'}</Text>
-          <Text style={s.pillText}>{fakeDeafen ? 'F.DEAF ON' : 'F.DEAF'}</Text>
+          <Text style={s.fabIcon}>⚡</Text>
+          {gainPreset !== 'OFF' && <View style={s.fabDot} />}
         </TouchableOpacity>
+      </Animated.View>
 
-        {/* Spacer */}
-        <View style={{ flex: 1 }} />
-
-        {/* Mixer button */}
-        <TouchableOpacity style={s.mixerBtn} onPress={openPanel}>
-          <Text style={s.mixerIcon}>🎛️</Text>
-          <Text style={s.mixerText}>MIXER</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-
-      {/* Slide-in Control Panel */}
-      {panelVisible && (
-        <Animated.View
-          style={[s.panel, { transform: [{ translateX: slideAnim }] }]}
-        >
-          <ControlPanel
-            webviewRef={webviewRef}
-            fakeDeafen={fakeDeafen}
-            onToggleFakeDeafen={toggleFakeDeafen}
-            onClose={closePanel}
-          />
-        </Animated.View>
+      {/* Control panel modal */}
+      {panelOpen && (
+        <ControlPanel
+          gainPreset={gainPreset}
+          reverbPreset={reverbPreset}
+          voicePreset={voicePreset}
+          fakeDeafen={fakeDeafen}
+          fakeMute={fakeMute}
+          deviceSpoof={deviceSpoof}
+          eqBands={eqBands}
+          ucoreReady={ucoreReady}
+          onGain={changeGain}
+          onReverb={changeReverb}
+          onVoice={changeVoice}
+          onEQ={changeEQ}
+          onFakeDeafen={toggleFakeDeafen}
+          onFakeMute={toggleFakeMute}
+          onDeviceSpoof={changeDeviceSpoof}
+          onClose={() => setPanelOpen(false)}
+          onLogout={logout}
+          onSwitchAccounts={() => { setPanelOpen(false); navigation.navigate('Accounts'); }}
+          onReload={() => { webRef.current?.reload(); setPanelOpen(false); }}
+        />
       )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0a0a0f' },
-  webview: { flex: 1 },
-  floatBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: 'rgba(10,10,15,0.92)',
-    borderTopWidth: 1, borderTopColor: '#1a1a2e'
-  },
-  pill: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#111118', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: '#2d2d3d', gap: 6
-  },
-  pillActive: {
-    backgroundColor: '#1a0030', borderColor: '#7c3aed',
-    shadowColor: '#7c3aed', shadowOpacity: 0.4, shadowRadius: 8
-  },
-  pillIcon: { fontSize: 14 },
-  pillText: { color: '#ccc', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  mixerBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#0f172a', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderWidth: 1, borderColor: '#1e40af', gap: 6,
-    shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 8
-  },
-  mixerIcon: { fontSize: 18 },
-  mixerText: { color: '#60a5fa', fontSize: 12, fontWeight: '800', letterSpacing: 1 },
-  panel: {
-    position: 'absolute', top: 0, bottom: 0,
-    right: 0, width: SCREEN_W,
-    backgroundColor: '#0a0a0f',
-    shadowColor: '#000', shadowOpacity: 0.6,
-    shadowRadius: 20, shadowOffset: { width: -4, height: 0 }
-  }
+  root:       { flex: 1, backgroundColor: '#0a0a0f' },
+  web:        { flex: 1, backgroundColor: '#0a0a0f' },
+  loading:    { flex: 1, backgroundColor: '#0a0a0f', alignItems: 'center', justifyContent: 'center' },
+  webLoading: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a0a0f' },
+  loadingTxt: { color: '#7c3aed', fontSize: 22, fontWeight: '800' },
+
+  statusDots: { position: 'absolute', left: 12, flexDirection: 'row', gap: 4 },
+  dot:        { width: 6, height: 6, borderRadius: 3, backgroundColor: '#333' },
+  dotGreen:   { backgroundColor: '#22c55e' },
+  dotPurple:  { backgroundColor: '#7c3aed' },
+
+  fab:        { position: 'absolute', width: 52, height: 52 },
+  fabInner:   { width: 52, height: 52, borderRadius: 26, backgroundColor: '#7c3aed', alignItems: 'center', justifyContent: 'center', shadowColor: '#7c3aed', shadowOpacity: 0.9, shadowRadius: 16, elevation: 12 },
+  fabIcon:    { fontSize: 22 },
+  fabDot:     { position: 'absolute', top: 6, right: 6, width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', borderWidth: 1.5, borderColor: '#0a0a0f' },
 });
