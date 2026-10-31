@@ -16,8 +16,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
@@ -31,5 +30,5 @@ jobs:
       - name: Build IPA
         run: eas build --platform ios --profile preview --non-interactive
 
-      - name: Get build URL
-        run: echo "Check expo.dev/accounts/[your-username]/projects/blaster-zone/builds for your IPA download link"
+      - name: Done
+        run: echo "Build submitted! Check https://expo.dev for your IPA download link."
