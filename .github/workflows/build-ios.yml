@@ -27,16 +27,13 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build IPA
-        run: eas build --platform ios --profile preview --non-interactive --no-wait 2>&1 || true
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_NO_VCS: 1
-
-      - name: Check EAS whoami
+      - name: Check who I am
         run: eas whoami
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Done
-        run: echo "Build submitted! Check https://expo.dev for your IPA download link."
+      - name: Build IPA
+        run: eas build --platform ios --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_NO_VCS: 1
