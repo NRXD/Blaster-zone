@@ -19,7 +19,8 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "BlasterZone needs mic access for Discord voice.",
         "NSCameraUsageDescription": "BlasterZone needs camera for Discord video.",
-        "NSPhotoLibraryUsageDescription": "BlasterZone needs photos for profile pictures."
+        "NSPhotoLibraryUsageDescription": "BlasterZone needs photos for profile pictures.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
