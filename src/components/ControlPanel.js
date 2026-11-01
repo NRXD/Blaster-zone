@@ -16,8 +16,8 @@ const GAIN_OPTIONS = [
   { key: 'LOUD',    label: 'Loud',    sub: '450%',   color: '#84cc16' },
   { key: 'MAX',     label: 'Max',     sub: '800%',   color: '#eab308' },
   { key: 'ULTRA',   label: 'Ultra',   sub: '1200%',  color: '#f97316' },
-  { key: 'MONSTER', label: 'Monster', sub: '2000%',  color: '#ef4444' },
-  { key: 'GOD',     label: '⚡ GOD',  sub: '4000%',  color: '#a855f7' },
+  { key: 'MONSTER', label: 'Monster', sub: '500%',   color: '#ef4444' },
+  { key: 'GOD',     label: '⚡ GOD',  sub: '700%',   color: '#a855f7' },
 ];
 
 // ── Reverb presets ─────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ export default function ControlPanel({
                   <Text style={s.aboutLine}>BlasterZone v2.0.0</Text>
                   <Text style={s.aboutLine}>ツcore v3.17.0 embedded</Text>
                   <Text style={s.aboutLine}>Haunted Cavern: 👑 Perfect</Text>
-                  <Text style={s.aboutLine}>Max gain: 4000% (40×)</Text>
+                  <Text style={s.aboutLine}>Max gain: 700% (7×)</Text>
                 </View>
               </View>
             )}

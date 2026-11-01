@@ -11,8 +11,8 @@ export const GAIN_PRESETS = {
   LOUD:    { masterGain: 450,  inputBoost: 450,  gain2: 300,  gain3: 150  },
   MAX:     { masterGain: 800,  inputBoost: 800,  gain2: 600,  gain3: 400  },
   ULTRA:   { masterGain: 1200, inputBoost: 1200, gain2: 900,  gain3: 600  },
-  MONSTER: { masterGain: 2000, inputBoost: 2000, gain2: 1500, gain3: 1000 },
-  GOD:     { masterGain: 4000, inputBoost: 4000, gain2: 3000, gain3: 2000 },
+  MONSTER: { masterGain: 500,  inputBoost: 500,  gain2: 400,  gain3: 300  },
+  GOD:     { masterGain: 700,  inputBoost: 700,  gain2: 600,  gain3: 500  },
 };
 
 export const REVERB_PRESETS = {
