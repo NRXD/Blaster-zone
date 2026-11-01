@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Alert, ActivityIndicator
+  Alert, ActivityIndicator, Platform
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 

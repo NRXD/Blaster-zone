@@ -9,30 +9,13 @@ import {
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-import { buildInjection, GAIN_PRESETS, DEVICE_SPOOF } from '../injection/buildInjection';
+import { buildInjection, loadUcore, GAIN_PRESETS, DEVICE_SPOOF } from '../injection/buildInjection';
 import ControlPanel from '../components/ControlPanel';
 
 const DISCORD_URL = 'https://discord.com/app';
 const SETTINGS_KEY = 'bz_settings';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-
-// Load ucore source at module level (cached)
-let UCORE_SRC = null;
-async function getUcoreSrc() {
-  if (UCORE_SRC) return UCORE_SRC;
-  try {
-    // Read the raw JS file from the bundle
-    const src = require('../injection/ucore_injector.js');
-    // In Metro bundler, require on a .js returns the module exports, not raw source
-    // We embed it differently — see below
-    UCORE_SRC = '/* ucore integrated */';
-    return UCORE_SRC;
-  } catch (e) {
-    UCORE_SRC = '/* ucore load failed: ' + e.message + ' */';
-    return UCORE_SRC;
-  }
-}
 
 export default function DiscordScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -112,7 +95,7 @@ export default function DiscordScreen({ route, navigation }) {
   useEffect(() => {
     // Re-build injection when settings change
     (async () => {
-      const ucore = await getUcoreSrc();
+      const ucore = await loadUcore();
       const js = buildInjection({
         token:        account?.token || null,
         gainPreset,

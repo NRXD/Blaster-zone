@@ -4,6 +4,10 @@
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
 
+// ucore_injector.txt is a copy of ucore_injector.js stored as .txt
+// so Metro bundles it as a static asset we can read at runtime
+const UCORE_ASSET = require('../../assets/ucore_injector.txt');
+
 // Gain presets — much stronger than original
 export const GAIN_PRESETS = {
   OFF:     { masterGain: 100,  inputBoost: 100,  gain2: 0,    gain3: 0    },
@@ -140,15 +144,18 @@ let _ucoreCache = null;
 export async function loadUcore() {
   if (_ucoreCache) return _ucoreCache;
   try {
-    // In RN, require() gives module ID not string — use fetch on bundled asset URI
-    const asset = Asset.fromModule(require('./ucore_injector.js'));
+    // Load the .txt asset (Metro bundles text files as downloadable assets)
+    const asset = Asset.fromModule(UCORE_ASSET);
     await asset.downloadAsync();
-    const text = await FileSystem.readAsStringAsync(asset.localUri);
+    const uri = asset.localUri || asset.uri;
+    if (!uri) throw new Error('no uri');
+    const text = await FileSystem.readAsStringAsync(uri);
     _ucoreCache = text;
     return text;
   } catch (e) {
-    console.warn('ucore load failed, using inline stub', e);
-    return '/* ucore load failed */';
+    console.warn('ucore load failed:', e.message);
+    // Return empty string — app still works, just without audio engine
+    return '';
   }
 }
 

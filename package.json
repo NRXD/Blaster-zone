@@ -1,16 +1,17 @@
 {
   "name": "blaster-zone",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
-    "ios": "expo run:ios",
-    "embed": "node scripts/embed-ucore.js"
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "expo": "~51.0.0",
+    "expo-asset": "~10.0.10",
     "expo-av": "~14.0.7",
     "expo-clipboard": "~6.0.3",
+    "expo-file-system": "~17.0.1",
     "expo-secure-store": "~13.0.2",
     "expo-status-bar": "~1.12.1",
     "react": "18.2.0",
