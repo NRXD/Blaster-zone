@@ -118,8 +118,38 @@ export default function DiscordScreen({ route, navigation }) {
       switch (msg.type) {
         case 'BZ_READY':    setBzReady(true); break;
         case 'UCORE_READY': setUcoreReady(true); break;
-        case 'TOKEN_INJECTED': break;
-        case 'TOKEN_ERROR': Alert.alert('Token Error', msg.err); break;
+        case 'TOKEN_INJECTED':
+        case 'TOKEN_OK':
+        case 'TOKEN_FALLBACK': break;
+        case 'TOKEN_ERROR':
+        case 'TOKEN_ERR':  Alert.alert('Token Error', msg.e || msg.err); break;
+        // In-Discord mixer bar changes — sync RN state + persist
+        case 'GAIN_CHANGE':
+          if (msg.preset) { setGainPreset(msg.preset); saveSettings({ gainPreset: msg.preset }); }
+          break;
+        case 'REVERB_CHANGE':
+          if (msg.room) {
+            // Convert display name back to preset key
+            const REVERB_BACK = {
+              'None': 'NONE', 'Small Room': 'SMALL_ROOM', 'Large Room': 'LARGE_ROOM',
+              'Cathedral': 'CATHEDRAL', 'Haunted Cavern': 'HAUNTED_CAVERN',
+              'Underwater': 'UNDERWATER', 'Concert Hall': 'CONCERT',
+            };
+            const key = REVERB_BACK[msg.room] || 'NONE';
+            setReverbPreset(key);
+            saveSettings({ reverbPreset: key });
+          }
+          break;
+        case 'FAKE_DEAFEN_TOGGLE':
+          setFakeDeafen(!!msg.value);
+          saveSettings({ fakeDeafen: !!msg.value });
+          break;
+        case 'PLUGIN_TOGGLE':
+          // Plugin toggles are stored in WebView localStorage — nothing to do in RN
+          break;
+        case 'UCORE_ERR':
+          console.warn('ucore error:', msg.e);
+          break;
       }
     } catch (e) {}
   }, []);
