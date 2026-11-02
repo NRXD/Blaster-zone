@@ -4,6 +4,12 @@
     "appVersionSource": "local"
   },
   "build": {
+    "simulator": {
+      "ios": {
+        "simulator": true,
+        "resourceClass": "m-medium"
+      }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal"

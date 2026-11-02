@@ -27,10 +27,17 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build (simulator - no Apple credentials needed)
-        run: eas build --platform ios --profile preview --non-interactive --no-wait
+      - name: Patch system watchers
+        run: |
+          echo vm.max_map_count=262144 | sudo tee -a /etc/sysctl.conf
+          echo fs.inotify.max_user_watches=655360 | sudo tee -a /etc/sysctl.conf
+          echo fs.inotify.max_user_instances=1280 | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
+
+      - name: Build iOS simulator (no Apple credentials needed)
+        run: eas build --platform ios --profile simulator --non-interactive --no-wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Done
-        run: echo "Build submitted to Expo! Check https://expo.dev/accounts/blaster-1s-team/projects/67/builds for download link"
+        run: echo "Build submitted! Check https://expo.dev/accounts/blaster-1s-team/projects/67/builds"
