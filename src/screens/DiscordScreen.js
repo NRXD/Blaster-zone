@@ -90,25 +90,45 @@ export default function DiscordScreen({ route, navigation }) {
   }
 
   // ── Build injection JS ──────────────────────────────────────────────────
-  const [injectionJS, setInjectionJS] = useState('');
+  // Start with empty string so we build immediately without waiting for ucore
+  const [injectionJS, setInjectionJS] = useState(null);
+  const ucoreSourceRef = useRef('');
 
   useEffect(() => {
-    // Re-build injection when settings change
+    // Build injection immediately (no ucore yet) so Discord loads right away
+    const jsNoUcore = buildInjection({
+      token:        account?.token || null,
+      gainPreset,
+      reverbPreset,
+      voicePreset,
+      fakeDeafen,
+      fakeMute,
+      deviceSpoof,
+      ucoreSource:  ucoreSourceRef.current,
+      eqBands,
+    });
+    setInjectionJS(jsNoUcore);
+
+    // Load ucore in background with 8s timeout, inject when ready
+    let cancelled = false;
     (async () => {
-      const ucore = await loadUcore();
-      const js = buildInjection({
-        token:        account?.token || null,
-        gainPreset,
-        reverbPreset,
-        voicePreset,
-        fakeDeafen,
-        fakeMute,
-        deviceSpoof,
-        ucoreSource:  ucore,
-        eqBands,
-      });
-      setInjectionJS(js);
+      try {
+        const ucore = await Promise.race([
+          loadUcore(),
+          new Promise(resolve => setTimeout(() => resolve(''), 8000))
+        ]);
+        if (cancelled) return;
+        if (ucore && ucore !== ucoreSourceRef.current) {
+          ucoreSourceRef.current = ucore;
+          // Inject ucore directly into running WebView — no reload needed
+          // This fires after Discord is already loaded and visible
+          if (webRef.current) {
+            webRef.current.injectJavaScript(ucore + '\n;true;');
+          }
+        }
+      } catch (e) {}
     })();
+    return () => { cancelled = true; };
   }, [gainPreset, reverbPreset, voicePreset, fakeDeafen, fakeMute, deviceSpoof, eqBands, account]);
 
   // ── JS → App messages ───────────────────────────────────────────────────
@@ -227,10 +247,12 @@ export default function DiscordScreen({ route, navigation }) {
   const userAgent = DEVICE_SPOOF[deviceSpoof]?.properties?.browser_user_agent
     || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9158 Chrome/120.0.6099.291 Electron/28.2.10 Safari/537.36';
 
-  if (!injectionJS) {
+  // injectionJS starts null — show Discord immediately once first build is done
+  // null = still building (fast, no network), string = ready
+  if (injectionJS === null) {
     return (
       <View style={s.loading}>
-        <Text style={s.loadingTxt}>⚡ Loading BlasterZone...</Text>
+        <Text style={s.loadingTxt}>⚡</Text>
       </View>
     );
   }

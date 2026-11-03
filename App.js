@@ -20,7 +20,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const active = await SecureStore.getItemAsync('active_account');
+        const active = await SecureStore.getItemAsync('bz_active_account');
         if (active) {
           const acc = JSON.parse(active);
           setInitialRoute('Discord');
