@@ -7,8 +7,9 @@ on:
 
 jobs:
   build:
-    name: Build iOS
-    runs-on: ubuntu-latest
+    name: Build iOS IPA
+    runs-on: macos-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,27 +18,54 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm install
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install Expo CLI
+        run: npm install -g expo-cli @expo/cli
 
-      - name: Patch system watchers
-        run: |
-          echo vm.max_map_count=262144 | sudo tee -a /etc/sysctl.conf
-          echo fs.inotify.max_user_watches=655360 | sudo tee -a /etc/sysctl.conf
-          echo fs.inotify.max_user_instances=1280 | sudo tee -a /etc/sysctl.conf
-          sudo sysctl -p
-
-      - name: Build iOS simulator (no Apple credentials needed)
-        run: eas build --platform ios --profile simulator --non-interactive --no-wait
+      - name: Prebuild iOS (generate Xcode project)
+        run: npx expo prebuild --platform ios --no-install
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: 1
 
-      - name: Done
-        run: echo "Build submitted! Check https://expo.dev/accounts/blaster-1s-team/projects/67/builds"
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+        env:
+          NO_FLIPPER: 1
+
+      - name: Build .app (unsigned, no provisioning)
+        run: |
+          cd ios
+          xcodebuild \
+            -workspace BlasterZone.xcworkspace \
+            -scheme BlasterZone \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath ./build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            | xcpretty || true
+
+      - name: Wrap .app → .ipa
+        run: |
+          APP_PATH=$(find ios/build -name "*.app" -not -path "*/intermediates/*" | head -1)
+          echo "Found .app: $APP_PATH"
+          mkdir -p /tmp/Payload
+          cp -r "$APP_PATH" /tmp/Payload/
+          cd /tmp
+          zip -r BlasterZone.ipa Payload/
+          ls -lh BlasterZone.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlasterZone-IPA
+          path: /tmp/BlasterZone.ipa
+          retention-days: 30
