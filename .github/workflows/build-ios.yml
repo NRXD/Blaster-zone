@@ -7,9 +7,8 @@ on:
 
 jobs:
   build:
-    name: Build iOS IPA
-    runs-on: macos-latest
-
+    name: Build iOS
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,49 +21,19 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install Expo CLI
-        run: npm install -g expo-cli @expo/cli
-
-      - name: Prebuild iOS (generate Xcode project)
-        run: npx expo prebuild --platform ios --no-install
-        env:
-          EXPO_NO_TELEMETRY: 1
-
-      - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install --repo-update
-        env:
-          NO_FLIPPER: 1
-
-      - name: Build .app (unsigned, no provisioning)
-        run: |
-          cd ios
-          xcodebuild \
-            -workspace BlasterZone.xcworkspace \
-            -scheme BlasterZone \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -derivedDataPath ./build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            ONLY_ACTIVE_ARCH=NO \
-            | xcpretty || true
-
-      - name: Wrap .app → .ipa
-        run: |
-          APP_PATH=$(find ios/build -name "*.app" -not -path "*/intermediates/*" | head -1)
-          echo "Found .app: $APP_PATH"
-          mkdir -p /tmp/Payload
-          cp -r "$APP_PATH" /tmp/Payload/
-          cd /tmp
-          zip -r BlasterZone.ipa Payload/
-          ls -lh BlasterZone.ipa
-
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
         with:
-          name: BlasterZone-IPA
-          path: /tmp/BlasterZone.ipa
-          retention-days: 30
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build iOS (simulator — no Apple credentials needed)
+        run: eas build --platform ios --profile simulator --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Done
+        run: |
+          echo "Build submitted to EAS!"
+          echo "Download tar.gz from: https://expo.dev/accounts/blaster-1s-team/projects/67/builds"
+          echo "Then send to Claude to wrap as IPA"
