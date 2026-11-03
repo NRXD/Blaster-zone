@@ -1,4 +1,4 @@
-name: Build iOS IPA
+name: Build BlasterZone IPA
 
 on:
   push:
@@ -7,33 +7,46 @@ on:
 
 jobs:
   build:
-    name: Build iOS
+    name: Patch Revenge IPA with BlasterZone
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build iOS (simulator — no Apple credentials needed)
-        run: eas build --platform ios --profile simulator --non-interactive --no-wait
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Done
+      - name: Download Revenge IPA
         run: |
-          echo "Build submitted to EAS!"
-          echo "Download tar.gz from: https://expo.dev/accounts/blaster-1s-team/projects/67/builds"
-          echo "Then send to Claude to wrap as IPA"
+          curl -L "https://github.com/revenge-mod/revenge-tweak/releases/download/v250.0/Revenge.ipa" \
+            -o Revenge.ipa
+          ls -lh Revenge.ipa
+
+      - name: Inject BlasterZone into Revenge IPA
+        run: |
+          # Extract
+          mkdir -p work
+          unzip -q Revenge.ipa -d work
+
+          APP="work/Payload/Discord.app"
+          PATCHES="$APP/RevengePatches.bundle"
+
+          # Create preloads directory (dylib supports this natively)
+          mkdir -p "$PATCHES/preloads"
+
+          # Copy BlasterZone plugin as preload
+          cp revenge-plugin/src/index.js "$PATCHES/preloads/blasterzone.js"
+
+          echo "BlasterZone injected into preloads"
+          ls "$PATCHES/preloads/"
+
+          # Repack
+          cd work
+          zip -r -q ../BlasterZone.ipa Payload/
+          cd ..
+          ls -lh BlasterZone.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlasterZone-IPA
+          path: BlasterZone.ipa
+          retention-days: 30

@@ -1,0 +1,8 @@
+{
+  "id": "BlasterZone",
+  "name": "ツ BlasterZone",
+  "description": "Voice gain boost, fake deafen, fake mute, 25+ Discord plugins. Built by theone.",
+  "authors": [{ "name": "theone", "id": "0" }],
+  "main": "index.js",
+  "hash": "blasterzone-v2.2"
+}
