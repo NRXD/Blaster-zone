@@ -10,27 +10,66 @@
   var BZ_KEY = '__blasterzone_state__';
 
   // ────────────────────────────────────────────────────────────────────────
-  // Bootstrap: wait for either vendetta or bunny to be ready
+  // Bootstrap: intercept the EXACT moment vendetta or bunny is assigned
+  // Uses Object.defineProperty setter — fires instantly, no polling lag
+  // Also has setTimeout fallback in case the property is set before we run
   // ────────────────────────────────────────────────────────────────────────
-  var MAX_ATTEMPTS = 600; // 120 seconds at 200ms
-  var attempt = 0;
+  var _booted = false;
 
-  function poll() {
-    attempt++;
-    if (attempt > MAX_ATTEMPTS) {
-      console.warn('[BZ] API never ready after ' + MAX_ATTEMPTS + ' attempts');
-      return;
-    }
-    var api = window.vendetta || window.bunny;
-    if (!api) {
-      setTimeout(poll, 200);
-      return;
-    }
-    try { boot(api); }
-    catch (e) { console.error('[BZ] boot error:', e && e.message); }
+  function tryBoot(api) {
+    if (_booted) return;
+    if (!api || typeof api !== 'object') return;
+    // Make sure it's a real API object — check for at least one expected key
+    if (!api.metro && !api.patcher && !api.modules && !api.findByProps) return;
+    _booted = true;
+    console.log('[BZ] API ready, booting...');
+    setTimeout(function() {
+      try { boot(api); }
+      catch (e) { console.error('[BZ] boot error:', e && e.message); }
+    }, 0);
   }
 
-  setTimeout(poll, 300);
+  // Hook vendetta global
+  try {
+    var _vendettaVal = window.vendetta;
+    Object.defineProperty(window, 'vendetta', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return _vendettaVal; },
+      set: function(v) {
+        _vendettaVal = v;
+        tryBoot(v);
+      }
+    });
+    if (_vendettaVal) tryBoot(_vendettaVal);
+  } catch(e) {}
+
+  // Hook bunny global
+  try {
+    var _bunnyVal = window.bunny;
+    Object.defineProperty(window, 'bunny', {
+      configurable: true,
+      enumerable: true,
+      get: function() { return _bunnyVal; },
+      set: function(v) {
+        _bunnyVal = v;
+        if (!_booted) tryBoot(v);
+      }
+    });
+    if (_bunnyVal) tryBoot(_bunnyVal);
+  } catch(e) {}
+
+  // Fallback polling — catches edge cases where defineProperty fails
+  var _pollCount = 0;
+  function poll() {
+    if (_booted) return;
+    _pollCount++;
+    if (_pollCount > 300) return; // 60s max
+    var api = window.vendetta || window.bunny;
+    if (api) { tryBoot(api); return; }
+    setTimeout(poll, 200);
+  }
+  setTimeout(poll, 1000);
 
   // ────────────────────────────────────────────────────────────────────────
   // Main boot — runs once API is available
